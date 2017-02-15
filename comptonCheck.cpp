@@ -143,7 +143,7 @@ public:
     return CVec3(
       y * V2.z  -  z * V2.y,
       z * V2.x  -  x * V2.z,
-      x * V2.y  -  y * V2.x 	);
+      x * V2.y  -  y * V2.x   );
   }
 
   // Return vector rotated by the 3x3 portion of matrix m
@@ -209,6 +209,7 @@ struct CrystalData
   TGraph* wz; //w(z) graph for this crystal
   TGraphDelaunay*** gd; //pointers to the pi_(w,E) for this crystal
   TF2*** quadratic; //quadratic function describing the pi_(z,p_tot), fitted by matlab on the calibration data
+  TF2*** linear; //linear function describing the pi_(z,p_tot), fitted by matlab on the calibration data
   Float_t correction; //
 };
 
@@ -409,8 +410,8 @@ int main (int argc, char** argv)
   Float_t stopZ0;
   Float_t startZ1;
   Float_t stopZ1;
-  startZ0 = startZ1 = -7.5;  //crystal limits. +/-7.5 is reality
-  stopZ0 = stopZ1 = 7.5;
+  startZ0 = startZ1 = -15;  //crystal limits. +/-7.5 is reality
+  stopZ0 = stopZ1 = 15;
   // int sp_mppcI0 = 2;
   // int sp_mppcJ0 = 1;
   // int sp_mppcI1 = 2;
@@ -425,6 +426,12 @@ int main (int argc, char** argv)
   double quadraticFunctionMaxZ = 15.0;
   double quadraticFunctionMinPtot = 0.0;
   double quadraticFunctionMaxPtot = 6000.0;
+
+  double linearFunctionMinZ = 0.0;
+  double linearFunctionMaxZ = 15.0;
+  double linearFunctionMinPtot = 0.0;
+  double linearFunctionMaxPtot = 6000.0;
+
   double MinumimDetectableEnergy = 0.05;
   bool minimumEnergy = true;
 
@@ -434,7 +441,7 @@ int main (int argc, char** argv)
   //                        3D surfaces INTERPOLATION                     //
   //                                                                      //
   //----------------------------------------------------------------------//
-  int interpolationWay = 2;  // 0 = TGraphDelaunay on sampled data , 1 = TGraphDelaunay on fit surfaces produced by matlab, 2 = TF2 of quadratic functions fitted by matlab
+  int interpolationWay = 2;  // 0 = TGraphDelaunay on sampled data , 1 = TGraphDelaunay on fit surfaces produced by matlab, 2 = TF2 of quadratic functions fitted by matlab, 3 = TF2 of linear functions fitted by matlab
 
 
   //----------------------------------------------------------------------//
@@ -556,6 +563,9 @@ int main (int argc, char** argv)
         crystal[iCry][jCry]->quadratic = new TF2**[(int) sqrt(numOfCh)];
         for(int igd = 0; igd < sqrt(numOfCh) ; igd++) crystal[iCry][jCry]->quadratic[igd] = new TF2* [(int) sqrt(numOfCh)];
 
+        crystal[iCry][jCry]->linear = new TF2**[(int) sqrt(numOfCh)];
+        for(int igd = 0; igd < sqrt(numOfCh) ; igd++) crystal[iCry][jCry]->linear[igd] = new TF2* [(int) sqrt(numOfCh)];
+
 
         TGraph2D ***camp;
         camp = new TGraph2D**[(int) sqrt(numOfCh)];
@@ -634,7 +644,6 @@ int main (int argc, char** argv)
             }
             else if(interpolationWay == 2) // get the tf2 from matlab interpolation done with quadratic functions
             {
-
               std::stringstream matlabQuadFileName;
               matlabQuadFileName << "par_mat_[" << iMPPC <<  "][" << jMPPC <<  "]_" << crystal[iCry][jCry]->id << ".dat";
               // std::cout << matlabQuadFileName.str() << std::endl;
@@ -681,6 +690,49 @@ int main (int argc, char** argv)
               }
               matlabFile.close();
             }
+
+            else if(interpolationWay == 3) // get the tf2 from matlab interpolation done with linear functions
+            {
+
+              std::stringstream matlabLinFileName;
+              matlabLinFileName << "par_mat_[" << iMPPC <<  "][" << jMPPC <<  "]_" << crystal[iCry][jCry]->id << ".dat";
+              // std::cout << matlabLinFileName.str() << std::endl;
+              ifstream matlabFile(matlabLinFileName.str().c_str());
+
+              if(matlabFile.good())
+              {
+                std::string p0,p1,p2;
+                getline ( matlabFile, p0, ',' );
+                // std::cout << p0 << std::endl;
+                getline ( matlabFile, p1, ',' );
+                // std::cout << p1 << std::endl;
+                getline ( matlabFile, p2 );
+                // std::cout << p2 << std::endl;
+
+                // std::cout << valueX  << " " << valueY << " " << valueZ << std::endl;
+                std::stringstream sstream;
+                sstream << "lin_[" << iMPPC <<  "][" << jMPPC <<  "]_" << crystal[iCry][jCry]->id;
+
+                crystal[iCry][jCry]->linear[iMPPC][jMPPC] = new TF2(sstream.str().c_str(),"[0] + [1]*x + [2]*y");
+
+                crystal[iCry][jCry]->linear[iMPPC][jMPPC]->SetParameter(0,atof(p0.c_str()));
+                crystal[iCry][jCry]->linear[iMPPC][jMPPC]->SetParameter(1,atof(p1.c_str()));
+                crystal[iCry][jCry]->linear[iMPPC][jMPPC]->SetParameter(2,atof(p2.c_str()));
+                // std::cout << "pre cry "<< crystal[iCry][jCry]->id << " " << iMPPC << "," << jMPPC << " ";
+                // for(int cOut = 0 ; cOut < 6 ; cOut++)
+                // {
+                //   std::cout << crystal[iCry][jCry]->linear[iMPPC][jMPPC]->GetParameter(cOut) << " ";
+                // }
+                // std::cout  << std::endl;
+                sstream.str("");
+                // crystal[iCry][jCry]->linear[iMPPC][jMPPC] = linFit;
+                // camp[iMPPC][jMPPC]->SetPoint(campPoint,atof(valueX.c_str()),atof(valueY.c_str()),atof(valueZ.c_str()));
+                // campPoint++;
+              }
+
+              matlabFile.close();
+            }
+
             if(interpolationWay == 0 | interpolationWay == 1)
             {
               // std::cout << crystal[iCry][jCry]->id << " " << iMPPC << " " << jMPPC << std::endl;
@@ -927,6 +979,8 @@ int main (int argc, char** argv)
     TGraphDelaunay*** gd1;
     TF2*** quad0;
     TF2*** quad1;
+    TF2*** lin0;
+    TF2*** lin1;
 
     CrystalData* crystaldata[2]; //the data of the 2 crystals that will be considered
     // double cry0x = cry0centerX;
@@ -1131,6 +1185,11 @@ int main (int argc, char** argv)
             quad0 = crystaldata[0]->quadratic;
             quad1 = crystaldata[1]->quadratic;
           }
+          else if(interpolationWay == 3)
+          {
+            lin0 = crystaldata[0]->linear;
+            lin1 = crystaldata[1]->linear;
+          }
           //but check if this event matched the choice of user...
           if(averageDepEvents[0].id != cry0N) isCandidate = false;
           if(averageDepEvents[1].id != cry1N) isCandidate = false;
@@ -1191,6 +1250,11 @@ int main (int argc, char** argv)
             {
               quad0 = crystaldata[0]->quadratic;
               quad1 = crystaldata[1]->quadratic;
+            }
+            else if(interpolationWay == 3)
+            {
+              lin0 = crystaldata[0]->linear;
+              lin1 = crystaldata[1]->linear;
             }
           }
         }
@@ -1510,7 +1574,6 @@ int main (int argc, char** argv)
         Float_t prob_compt[2];
         Float_t prob_dist2[2];
         Float_t prob_phelect[2];
-
         // calculate the light distro and stuff for the "real" solution
         // ...
         zValue[0] = averageDepEvents[0].z;
@@ -1629,6 +1692,33 @@ int main (int argc, char** argv)
                          << std::endl;
                 recoTrue.push_back(quad0[iPseudoMppc][jPseudoMppc]->Eval(-zValue[0]+7.5,charge0) + quad1[iPseudoMppc][jPseudoMppc]->Eval(-zValue[1]+7.5,charge1));
               }
+              if(interpolationWay == 3)
+              {
+                std::cout << "cry0 " << iPseudoMppc << "," << jPseudoMppc << " ";
+                for(int cOut = 0 ; cOut < 6 ; cOut++)
+                {
+                  std::cout << lin0[iPseudoMppc][jPseudoMppc]->GetParameter(cOut) << " ";
+                }
+                std::cout  << std::endl;
+
+                std::cout << "cry1 " << iPseudoMppc << "," << jPseudoMppc << " ";
+                for(int cOut = 0 ; cOut < 6 ; cOut++)
+                {
+                  std::cout << lin1[iPseudoMppc][jPseudoMppc]->GetParameter(cOut) << " ";
+                }
+                std::cout  << std::endl;
+
+                tot0 += lin0[iPseudoMppc][jPseudoMppc]->Eval(-zValue[0]+7.5,charge0);
+                tot1 += lin1[iPseudoMppc][jPseudoMppc]->Eval(-zValue[1]+7.5,charge1);
+              // totDet += detector[ch];
+                std::cout << "channel "<< iPseudoMppc << "," << jPseudoMppc << "=" << iPseudoMppc*sqrt(numOfCh) + jPseudoMppc << "\t"
+                         << detector[ch] << "\t"
+                         << lin0[iPseudoMppc][jPseudoMppc]->Eval(-zValue[0]+7.5,charge0) << "\t"
+                         << lin1[iPseudoMppc][jPseudoMppc]->Eval(-zValue[1]+7.5,charge1) << "\t"
+                         << lin0[iPseudoMppc][jPseudoMppc]->Eval(-zValue[0]+7.5,charge0) + lin1[iPseudoMppc][jPseudoMppc]->Eval(-zValue[1]+7.5,charge1) << "\t"
+                         << std::endl;
+                recoTrue.push_back(lin0[iPseudoMppc][jPseudoMppc]->Eval(-zValue[0]+7.5,charge0) + lin1[iPseudoMppc][jPseudoMppc]->Eval(-zValue[1]+7.5,charge1));
+              }
             }
           }
           std::cout << totDet << "\t"
@@ -1664,6 +1754,7 @@ int main (int argc, char** argv)
               //point 1 always in crystal 1
               point1[0] = cry1centerX; // x
               point1[1] = cry1centerY; // y
+
               if(usingRealXY) //override x and y if you wanna use the real x and y impact coordinates
               {
                 point1[0] = averageDepEvents[1].x;
@@ -1690,11 +1781,17 @@ int main (int argc, char** argv)
                   {
                     recoDetector.push_back(quad0[iPseudoMppc][jPseudoMppc]->Eval(-zValue[0]+7.5,charge0) + quad1[iPseudoMppc][jPseudoMppc]->Eval(-zValue[1]+7.5,charge1));
                   }
+                  else if(interpolationWay == 3)
+                  {
+                    recoDetector.push_back(lin0[iPseudoMppc][jPseudoMppc]->Eval(-zValue[0]+7.5,charge0) + lin1[iPseudoMppc][jPseudoMppc]->Eval(-zValue[1]+7.5,charge1));
+                  }
                   // recoDetector0.push_back(gd0[iPseudoMppc][jPseudoMppc]->ComputeZ(computeW(wzgraph0,zValue[0]),charge0));
                   // recoDetector1.push_back(gd1[iPseudoMppc][jPseudoMppc]->ComputeZ(computeW(wzgraph1,zValue[1]),charge1));
 
                 }
               }
+
+
               //LIKELIHOOD
               //compute the probability of each detector measurement, given the reconstructed charge for these z0 and z1
               double zpair_prob = 1.0;
@@ -1847,6 +1944,10 @@ int main (int argc, char** argv)
                   else if(interpolationWay == 2)
                   {
                     recoDetector.push_back(quad0[iPseudoMppc][jPseudoMppc]->Eval(-zValue[0]+7.5,charge0) + quad1[iPseudoMppc][jPseudoMppc]->Eval(-zValue[1]+7.5,charge1));
+                  }
+                  else if(interpolationWay == 3)
+                  {
+                    recoDetector.push_back(lin0[iPseudoMppc][jPseudoMppc]->Eval(-zValue[0]+7.5,charge0) + lin1[iPseudoMppc][jPseudoMppc]->Eval(-zValue[1]+7.5,charge1));
                   }
                 }
               }
@@ -2063,6 +2164,7 @@ int main (int argc, char** argv)
           if(minChi01 < minChi10) histoDeltaChiRight->Fill(minChi10 - minChi01);
           else histoDeltaChiWrong->Fill(minChi01 - minChi10);
         }
+
         else // don't perform analysis, just set 0 and 1 to real points and do the math
         {
           if(verbose)
@@ -2082,6 +2184,7 @@ int main (int argc, char** argv)
             std::cout << "angle = " << (angle3D(source,point0,axis) / TMath::Pi())*180.0  << " deg" << std::endl;
           }
         }
+
       }
     }
 
