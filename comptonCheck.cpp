@@ -400,7 +400,7 @@ int main (int argc, char** argv)
   ss3 >> cEvent;
 
   bool isNewDataset = true;
-  bool specificCrystals = false;
+  bool specificCrystals = true;
   bool verbose = false;
   bool usingRealXY = false;
   bool frontSource = true; // puts the source just on top of the matrix
@@ -416,8 +416,8 @@ int main (int argc, char** argv)
   // int sp_mppcJ0 = 1;
   // int sp_mppcI1 = 2;
   // int sp_mppcJ1 = 1;
-  int sp_cry0N = 19;
-  int sp_cry1N = 35;
+  int sp_cry0N = 27;
+  int sp_cry1N = 36;
   // double sp_cry0centerX = -0.8;
   // double sp_cry0centerY = +0.8;
   // double sp_cry1centerX = -0.8;
@@ -441,7 +441,7 @@ int main (int argc, char** argv)
   //                        3D surfaces INTERPOLATION                     //
   //                                                                      //
   //----------------------------------------------------------------------//
-  int interpolationWay = 2;  // 0 = TGraphDelaunay on sampled data , 1 = TGraphDelaunay on fit surfaces produced by matlab, 2 = TF2 of quadratic functions fitted by matlab, 3 = TF2 of linear functions fitted by matlab
+  int interpolationWay = 3;  // 0 = TGraphDelaunay on sampled data , 1 = TGraphDelaunay on fit surfaces produced by matlab, 2 = TF2 of quadratic functions fitted by matlab, 3 = TF2 of linear functions fitted by matlab
 
 
   //----------------------------------------------------------------------//
@@ -808,8 +808,14 @@ int main (int argc, char** argv)
   long int extendedChiGood = 0;
   long int extendedChiGoodGain = 0;
   long int extendedChiBad = 0;
+  long int extendedChiProbGood = 0;
+  long int extendedChiProbBad = 0;
   long int extendedChiInsane = 0;
   long int extendedChiMistake = 0;
+  long int extendedChiBothBad = 0;
+  long int extendedChiBothGood = 0;
+  long int extendedChiGoodProbBad = 0;
+  long int extendedChiBadProbGood = 0;
 
   long int chiRightProbRight = 0;
   long int chiWrongProbRight = 0;
@@ -1566,6 +1572,8 @@ int main (int argc, char** argv)
         Float_t minChi10 = INFINITY;
         Float_t z0Best_01,z1Best_01,z0Best_10,z1Best_10;
         // std::cout << "CASE A - 0-> 1 " << std::endl;
+        Float_t chiSquareProb0_1;
+        Float_t chiSquareProb1_0;
 
         Float_t distance1[2];
         Float_t comptonAngle[2];
@@ -1609,9 +1617,9 @@ int main (int argc, char** argv)
         //first, take the two correction and do average
         double averageCorrection = (correction0 + correction1)/2.0;
         //then go back to the average photopeak in the two crystals
-        double averagaPhotoPeak = averageCorrection*0.511;
+        double averagePhotoPeak = averageCorrection*0.511;
         //now the ratio between these is a sort of average scaling factor for reconstructed charge
-        double scaleReco = totDet / averagaPhotoPeak;
+        double scaleReco = totDet / averagePhotoPeak;
 
 
         Float_t charge0 = eValue[0] * correction0 * scaleReco; // convert the deposited energy in "charge", assuming the energy-charge relation is linear starts in 0. This is true in simulations (they count the number of photons interacting in an "infinite pixels" detector) and in real data once the dataset is properly linearized (as the input of this program should be)
@@ -1861,7 +1869,8 @@ int main (int argc, char** argv)
                 Float_t comptonPhotoelDistance = distance3D(point0[0], point0[1], point0[2],point1[0], point1[1], point1[2]);
                 Float_t p_travel2 = simTravel(comptonPhotoelDistance, lambdaLYSO->Eval(eValue[1]));
                 Float_t p_photoelect = simPhotoelectric(photoelectricCrossSectionLYSO->Eval(eValue[1]));
-                totalProb_0_1  = p_travel1*p_compton*p_travel2*p_photoelect;
+                chiSquareProb0_1 = TMath::Prob(chiSquare,numOfCh-1);
+                totalProb_0_1  = p_travel1*p_compton*p_travel2*p_photoelect*chiSquareProb0_1;
                 intersection0[0] = intersection[0];
                 intersection0[1] = intersection[1];
                 intersection0[2] = intersection[2];
@@ -2022,7 +2031,8 @@ int main (int argc, char** argv)
                 // std::cout <<  "p_travel2\t" << p_travel2 << std::endl;
                 Float_t p_photoelect = simPhotoelectric(photoelectricCrossSectionLYSO->Eval(eValue[0]));
                 // std::cout <<  "p_photoelect\t" << p_photoelect << std::endl;
-                totalProb_1_0 = p_travel1*p_compton*p_travel2*p_photoelect;
+                chiSquareProb1_0 = TMath::Prob(chiSquare,numOfCh-1);
+                totalProb_1_0 = p_travel1*p_compton*p_travel2*p_photoelect*chiSquareProb1_0;
                 intersection1[0] = intersection[0];
                 intersection1[1] = intersection[1];
                 intersection1[2] = intersection[2];
@@ -2117,7 +2127,9 @@ int main (int argc, char** argv)
           std::cout <<  "P(CASE_A)\tP(CASE_B)\tP(CASE_A)/P(CASE_B)"<< std::endl;
           std::cout << totalProb_0_1 << "\t\t" << totalProb_1_0 << "\t\t" << totalProb_0_1/totalProb_1_0 << std::endl;
           std::cout << "Chi^2 CASE_A = "<< minChi01 << std::endl;
+          std::cout << "Prob chi^2 CASE A = "<< chiSquareProb0_1 << std::endl;
           std::cout << "Chi^2 CASE_B = "<< minChi10 << std::endl;
+          std::cout << "Prob chi^2 CASE B = "<< chiSquareProb1_0 << std::endl;
           histoProb->Fill(totalProb_0_1/totalProb_1_0);
           std::cout << "|--------------------------------------|"<< std::endl;
 
@@ -2129,11 +2141,26 @@ int main (int argc, char** argv)
           if(z1Best_01 > 7.5 | z1Best_01 < -7.5) AoutOfCrystals = true;
           if(z0Best_10 > 7.5 | z0Best_10 < -7.5) BoutOfCrystals = true;
           if(z1Best_10 > 7.5 | z1Best_10 < -7.5) BoutOfCrystals = true;
+          if(!AoutOfCrystals && !BoutOfCrystals) // if they are both reconstructed inside, check the probabilities
+          {
+            if(totalProb_0_1 > totalProb_1_0) extendedChiProbGood++;
+            else extendedChiProbBad++;
+          }
           if(!AoutOfCrystals && !BoutOfCrystals) // if they are both reconstructed inside, check the chi^2
           {
             if(minChi01 < minChi10) extendedChiGood++;
             else extendedChiBad++;
           }
+
+          //check when extendedChiProb and extendedChi are good or bad, related to each other
+          if(!AoutOfCrystals && !BoutOfCrystals) // if they are both reconstructed inside, check the chi^2
+          {
+            if(minChi01 < minChi10 && totalProb_0_1 > totalProb_1_0) extendedChiBothGood++;
+            else if(minChi01 > minChi10 && totalProb_0_1 < totalProb_1_0) extendedChiBothBad++;
+            else if(minChi01 < minChi10 && totalProb_0_1 < totalProb_1_0) extendedChiGoodProbBad++;
+            else if(minChi01 > minChi10 && totalProb_0_1 > totalProb_1_0) extendedChiBadProbGood++;
+          }
+
           if(!AoutOfCrystals && BoutOfCrystals) // if case b goes outside, decide for A regardless of chi^2
           {
             extendedChiGoodGain++;
@@ -2213,15 +2240,25 @@ int main (int argc, char** argv)
   std::cout << "Good predictions [no PhotEl]= " << goodCounterNoPhotEl << "\t accuracy (" << 100.0*((double) goodCounterNoPhotEl)/((double) (foundCandidate)) << " +/- " << 100.0*((double) goodCounterNoPhotEl)/((double) (foundCandidate))*sqrt(pow(1.0/sqrt(goodCounterNoPhotEl),2) + pow(1.0/sqrt(foundCandidate),2) ) << ")%" << std::endl;
 
   std::cout << "Extended Chi^2:"         << std::endl
+            << "extendedChiProbGood\t\t= "   << extendedChiProbGood    << std::endl
             << "extendedChiGood\t\t= "   << extendedChiGood    << std::endl
             << "extendedChiGoodGain\t= " << extendedChiGoodGain    << std::endl
+            << "extendedChiProbBad\t\t= "    << extendedChiProbBad     << std::endl
             << "extendedChiBad\t\t= "    << extendedChiBad     << std::endl
             << "extendedChiMistake\t= "  << extendedChiMistake << std::endl
             << "extendedChiInsane\t= "   << extendedChiInsane  << std::endl
-            << "Sum\t\t\t= "             << extendedChiGood + extendedChiGoodGain + extendedChiBad + extendedChiMistake + extendedChiInsane << std::endl
+            << "Sum chi square with probabilities\t\t\t= "             << extendedChiProbGood + extendedChiGoodGain + extendedChiProbBad + extendedChiMistake + extendedChiInsane << std::endl
+            << "Sum chi square\t\t\t= "             << extendedChiGood + extendedChiGoodGain + extendedChiBad + extendedChiMistake + extendedChiInsane << std::endl
             << "candidates\t\t= "        << foundCandidate << std::endl;
 
   std::cout << "Good predictions [ext Chi^2] " << extendedChiGood+extendedChiGoodGain << "\t accuracy (" << 100.0*((double) (extendedChiGood+extendedChiGoodGain))/((double) (foundCandidate)) << " +/- " << 100.0*((double) (extendedChiGood+extendedChiGoodGain))/((double) (foundCandidate))*sqrt(pow(1.0/sqrt(extendedChiGood+extendedChiGoodGain),2) + pow(1.0/sqrt(foundCandidate),2) ) << ")%" << std::endl;
+  std::cout << "Good predictions [ext Chi^2 with probabilities] " << extendedChiProbGood+extendedChiGoodGain << "\t accuracy (" << 100.0*((double) (extendedChiProbGood+extendedChiGoodGain))/((double) (foundCandidate)) << " +/- " << 100.0*((double) (extendedChiProbGood+extendedChiGoodGain))/((double) (foundCandidate))*sqrt(pow(1.0/sqrt(extendedChiProbGood+extendedChiGoodGain),2) + pow(1.0/sqrt(foundCandidate),2) ) << ")%" << std::endl;
+
+  std::cout << "COMPARISON EXTENDED-EXTENDED_PROB"    << std::endl
+            << "bothWrong\t= "  << extendedChiBothBad    << std::endl
+            << "bothRight\t= "  << extendedChiBothGood    << std::endl
+            << "ChiRightProbWrong\t= "  << extendedChiGoodProbBad    << std::endl
+            << "ChiWrongProbRight\t= "  << extendedChiBadProbGood    << std::endl;
 
   std::cout << "COMPARISON CHI-PROB"    << std::endl
             << "chiRightProbRight\t= "  << chiRightProbRight    << std::endl

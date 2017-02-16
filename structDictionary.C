@@ -1,5 +1,5 @@
 // Loader.C
-#include "../Code/struct.hh"
+#include "../code/struct.hh"
 #include <vector>
 
 #ifdef __MAKECINT__
