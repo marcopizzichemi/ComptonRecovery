@@ -1875,7 +1875,7 @@ int main (int argc, char** argv)
                   zpair_prob *= MeasureProb(detector[i],recoDetector[i],sqrt(detector[i]));
                   //chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sqrt(detector[i]),2);
                   //chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(0.12*detector[i]/2.355,2) ;
-                  double sigmaChi = (crystal[cry1N/8][cry1N%8]->sigma[i/4][i%4])->Eval(detector[i]);
+                  double sigmaChi = (crystal[cry0N/8][cry0N%8]->sigma[i/4][i%4])->Eval(averageDepEvents[0].energy);
                   chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sigmaChi,2);
                 }
               }
@@ -2040,7 +2040,7 @@ int main (int argc, char** argv)
 
                   //chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sqrt(detector[i]),2);
                   // chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(0.12*detector[i]/2.355,2) ;
-                  double sigmaChi = (crystal[cry1N/8][cry1N%8]->sigma[i/4][i%4])->Eval(detector[i]);
+                  double sigmaChi = (crystal[cry1N/8][cry1N%8]->sigma[i/4][i%4])->Eval(averageDepEvents[1].energy);
                   chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sigmaChi,2);
                 }
               }
