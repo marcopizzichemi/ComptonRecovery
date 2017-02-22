@@ -20,6 +20,9 @@
 #include "TGraphDelaunay.h"
 #include "TF2.h"
 #include "TH3I.h"
+#include "TCutG.h"
+#include "TList.h"
+#include "TDirectory.h"
 
 
 #include "../code/struct.hh"
@@ -211,6 +214,8 @@ struct CrystalData
   TF2*** quadratic; //quadratic function describing the pi_(z,p_tot), fitted by matlab on the calibration data
   TF2*** linear; //linear function describing the pi_(z,p_tot), fitted by matlab on the calibration data
   TGraph*** sigma; //sigma vs energy deposited graph for this crystal, for each MPPC
+  TCutG* cutg0; //cutg0 for this crystal
+  TCutG* cutg1; //cutg1 for this crystal
   Float_t correction; //
 };
 
@@ -401,7 +406,7 @@ int main (int argc, char** argv)
   ss3 >> cEvent;
 
   bool isNewDataset = true;
-  bool specificCrystals = true;
+  bool specificCrystals = false;
   bool verbose = false;
   bool usingRealXY = false;
   bool frontSource = true; // puts the source just on top of the matrix
@@ -560,6 +565,21 @@ int main (int argc, char** argv)
         TCanvas *canvas = (TCanvas*) gDirectory->Get(sswPlot.str().c_str());
         crystal[iCry][jCry]->wz = (TGraph*) canvas->GetPrimitive(sswPlot.str().c_str());
 
+        TDirectory *dir = calibrationFile->GetDirectory(sscryfolder.str().c_str());
+        TList* List=dir->GetListOfKeys();
+        int const listSize = List->GetSize();
+        TObject *Keys[listSize];
+        Keys[0] = List->First();
+        for (int i=1; i<listSize; i++) {
+            Keys[i]=List->After(Keys[i-1]);
+            if (i==12) {
+                crystal[iCry][jCry]->cutg1 = (TCutG*) gDirectory->Get(Keys[12]->GetName());
+            }
+            if (i==13) {
+                crystal[iCry][jCry]->cutg0 = (TCutG*) gDirectory->Get(Keys[13]->GetName());
+            }
+        }
+
         // TGraphDelaunay ***gd;
         crystal[iCry][jCry]->gd = new TGraphDelaunay**[(int) sqrt(numOfCh)];
         for(int igd = 0; igd < sqrt(numOfCh) ; igd++) crystal[iCry][jCry]->gd[igd] = new TGraphDelaunay* [(int) sqrt(numOfCh)];
@@ -595,7 +615,6 @@ int main (int argc, char** argv)
 
             if(interpolationWay == 0 | interpolationWay == 1)
             {
-              std::stringstream sstream;
               sstream << "camp_[" << iMPPC <<  "][" << jMPPC <<  "]_" << crystal[iCry][jCry]->id;
               camp[iMPPC][jMPPC] = new TGraph2D();
               camp[iMPPC][jMPPC]->SetName(sstream.str().c_str());
@@ -946,6 +965,8 @@ int main (int argc, char** argv)
   long int goodChi = 0;
   long int goodCounterOnlyCompton = 0;
   long int goodCounterNoPhotEl = 0;
+  long int cutCounter = 0;
+  long int cutComptCounter = 0;
   std::cout << "nEntries = " << nEntries << std::endl;
   // int cEvent = 5197;
   // int cEvent = 400;
@@ -987,13 +1008,14 @@ int main (int argc, char** argv)
     // double cry1y = 2.4;
     // int cry0N = 28;
     // int cry1N = 26;
-
     double cry0centerX ;
     double cry0centerY ;
     double cry1centerX ;
     double cry1centerY ;
     double correction0;
     double correction1;
+    bool check0inCut;
+    bool check1inCut;
     TGraph* wzgraph0;
     TGraph* wzgraph1;
     TGraphDelaunay*** gd0;
@@ -1110,6 +1132,7 @@ int main (int argc, char** argv)
       averageDepEvents.push_back(tempAvgEnDep);
     }
 
+    
     //two crystals or more hit, but a crystal is hit more than once (like, 28 -> 36 -> 28)
     std::vector <int> checkReturning; // this std::vector has same size of averageDepEvents if there is no returning, smaller if there is
     int returned = 0;
@@ -1151,7 +1174,7 @@ int main (int argc, char** argv)
       isCandidate = false;
     }
     else // restric only to two specific crystals
-    {
+    {    
       if( averageDepEvents[0].time > averageDepEvents[1].time )
       {
         isCandidate = false;
@@ -1240,7 +1263,7 @@ int main (int argc, char** argv)
                   secondOK = true;
                 }
               }
-
+              
             }
           }
           if(!(firstOK && secondOK)) isCandidate = false;
@@ -1280,9 +1303,18 @@ int main (int argc, char** argv)
           }
         }
       }
+      //count events reconstructed outside the cutg0 and cutg1 cuts
+      check0inCut = (crystaldata[0]->cutg0->IsInside(averageDepEvents[0].z, averageDepEvents[0].x)
+        && crystaldata[0]->cutg1->IsInside(averageDepEvents[0].z, averageDepEvents[0].y));
+      check1inCut = (crystaldata[1]->cutg0->IsInside(averageDepEvents[1].z, averageDepEvents[1].x)
+        && crystaldata[1]->cutg1->IsInside(averageDepEvents[1].z, averageDepEvents[1].y));
+      if(!check0inCut && !check1inCut) cutCounter++;
+          
       // if(averageDepEvents[0].id != cry0N) isCandidate = false;
       // if(averageDepEvents[1].id != cry1N) isCandidate = false;
     }
+
+
 
     //source selection (TEMPORARY)
     if(frontSource)
@@ -1307,6 +1339,13 @@ int main (int argc, char** argv)
 
     if(isCandidate) //let the fun begin
     {
+      //count candidate events reconstructed outside the cutg0 and cutg1 cuts
+      check0inCut = (crystaldata[0]->cutg0->IsInside(averageDepEvents[0].z, averageDepEvents[0].x)
+        && crystaldata[0]->cutg1->IsInside(averageDepEvents[0].z, averageDepEvents[0].y));
+      check1inCut = (crystaldata[1]->cutg0->IsInside(averageDepEvents[1].z, averageDepEvents[1].x)
+        && crystaldata[1]->cutg1->IsInside(averageDepEvents[1].z, averageDepEvents[1].y));
+      if(!check0inCut && !check1inCut) cutComptCounter++;
+
 
       // calculate the u,v,w that we measure (we already know about the totalEnergyDeposited. it is worth to mention here that in reality
       // the check on the energy deposited is necessarily less accurate, given the energy resolution of the detector, but we will deal with that later)
@@ -2001,7 +2040,6 @@ int main (int argc, char** argv)
 
                   //chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sqrt(detector[i]),2);
                   // chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(0.12*detector[i]/2.355,2) ;
-                  std::cout << (crystal[cry0N/8][cry0N%8]->sigma[i/4][i%4])->Eval(detector[i]) << std::endl;
                   double sigmaChi = (crystal[cry1N/8][cry1N%8]->sigma[i/4][i%4])->Eval(detector[i]);
                   chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sigmaChi,2);
                 }
@@ -2255,6 +2293,8 @@ int main (int argc, char** argv)
   std::cout << "Multi cry [511 KeV deposition] events = "<< multipleCounter << std::endl;
   std::cout << "Returned = " << globalReturned << std::endl;
   std::cout << "Candidates = "<< foundCandidate << std::endl;
+  std::cout << "N events out of the cuts = " << cutCounter << std::endl;
+  std::cout << "N compton events out of the cuts = " << cutComptCounter << std::endl;
   std::cout << "Good predictions = " << goodCounter << "\t accuracy (" << 100.0*((double) goodCounter)/((double) (foundCandidate)) << " +/- " << 100.0*((double) goodCounter)/((double) (foundCandidate))*sqrt(pow(1.0/sqrt(goodCounter),2) + pow(1.0/sqrt(foundCandidate),2) ) << ")%" << std::endl;
   std::cout << "Good predictions [only Chi^2] = " << goodChi << "\t accuracy (" << 100.0*((double) goodChi)/((double) (foundCandidate)) << " +/- " << 100.0*((double) goodChi)/((double) (foundCandidate))*sqrt(pow(1.0/sqrt(goodChi),2) + pow(1.0/sqrt(foundCandidate),2) ) << ")%" << std::endl;
 
