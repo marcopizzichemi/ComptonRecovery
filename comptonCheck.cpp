@@ -210,26 +210,14 @@ struct CrystalData
   TGraphDelaunay*** gd; //pointers to the pi_(w,E) for this crystal
   TF2*** quadratic; //quadratic function describing the pi_(z,p_tot), fitted by matlab on the calibration data
   TF2*** linear; //linear function describing the pi_(z,p_tot), fitted by matlab on the calibration data
+  TGraph*** sigma; //sigma vs energy deposited graph for this crystal, for each MPPC
   Float_t correction; //
-};
-
-//struct of MPPC related data
-struct MPPCData
-{
-  int chNum;
-  TGraph* sigmaEnCharge;
 };
 
 //function to compare deposition event struct vectors using the field time
 bool compareByTime(const enDep &a,const enDep  &b)
 {
   return a.DepositionTime < b.DepositionTime;
-}
-
-//function to compare deposition event struct vectors using the field time
-bool compareBychNum(const MPPCData &a,const MPPCData  &b)
-{
-  return a.chNum < b.chNum;
 }
 
 
@@ -531,34 +519,6 @@ int main (int argc, char** argv)
   std::string mppcLabel [16] = {"A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"};
   TFile *calibrationFile = TFile::Open("calibration.root"); // hardcoded calibration file, output of ModuleCalibration on the out* files..
 
-  //make a standard vector of structs MPPCData
-  std::vector<MPPCData> vecMPPCs;
-
-  //fill it with channel number and tGraph
-  for(int i=0; i<numOfCh; i++)
-  {
-    //temp struct
-    MPPCData tmpMPPc;
-    
-    //channel number
-    tmpMPPc.chNum = i;
-
-    //fetch the sigmaEnergyCharge TGraph;
-    std::stringstream ssmppc;
-    ssmppc << "MPPC " << mppcLabel[i%4] << (i/4)+1;
-    std::stringstream ssmppcfolder;
-    ssmppcfolder << "Module 0.0/" << ssmppc.str() << " - 0.0-" << i/4 << "."<< i%4;
-    std::stringstream secPlot;
-    secPlot << "SigmaEnergyCharge graph " << ssmppc.str();
-    calibrationFile->cd();
-    calibrationFile->cd(ssmppcfolder.str().c_str());
-    TCanvas *canvas1 = (TCanvas*) gDirectory->Get(secPlot.str().c_str());
-    tmpMPPc.sigmaEnCharge = (TGraph*) canvas1->GetPrimitive(secPlot.str().c_str());
-    
-    //save into the std::vector of averages
-    vecMPPCs.push_back(tmpMPPc);
-  }
-
   //crystal objects
   CrystalData*** crystal;
   int cryLateralNum = (int) sqrt(numOfCry);
@@ -609,6 +569,9 @@ int main (int argc, char** argv)
 
         crystal[iCry][jCry]->linear = new TF2**[(int) sqrt(numOfCh)];
         for(int igd = 0; igd < sqrt(numOfCh) ; igd++) crystal[iCry][jCry]->linear[igd] = new TF2* [(int) sqrt(numOfCh)];
+        
+        crystal[iCry][jCry]->sigma = new TGraph**[(int) sqrt(numOfCh)];
+        for(int igd = 0; igd < sqrt(numOfCh) ; igd++) crystal[iCry][jCry]->sigma[igd] = new TGraph* [(int) sqrt(numOfCh)];
 
 
         TGraph2D ***camp;
@@ -621,6 +584,14 @@ int main (int argc, char** argv)
           for(int jMPPC = 0; jMPPC < sqrt(numOfCh) ; jMPPC++)
           {
             int campPoint = 0;
+
+            //fetch the sigma tGraph for each MPPC (for this crystal)
+            std::stringstream sstream;
+            sstream << "MPPC[" << iMPPC <<  "][" << jMPPC <<  "]_" << crystal[iCry][jCry]->id << "Graph Compton total Energy Deposited vs. MPPC charge";
+            TCanvas *canvas2 = (TCanvas*) gDirectory->Get(sstream.str().c_str()); //get the sigma tGraph
+            crystal[iCry][jCry]->sigma[iMPPC][jMPPC] = (TGraph*) canvas2->GetPrimitive(sstream.str().c_str());
+            sstream.str("");
+
 
             if(interpolationWay == 0 | interpolationWay == 1)
             {
@@ -1054,8 +1025,6 @@ int main (int argc, char** argv)
     // check crystal sequence, check for returning gammas, calculate an average xyz per crystal
     std::sort(energyDeposition->begin(), energyDeposition->end(), compareByTime);
     std::vector<std::vector < enDep > > separatedEnDep;
-
-    std::sort(vecMPPCs.begin(), vecMPPCs.end(), compareBychNum);
 
     int CurrentID = -1;
     float RealX = 0.0;
@@ -1867,7 +1836,8 @@ int main (int argc, char** argv)
                   zpair_prob *= MeasureProb(detector[i],recoDetector[i],sqrt(detector[i]));
                   //chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sqrt(detector[i]),2);
                   //chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(0.12*detector[i]/2.355,2) ;
-                  chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(vecMPPCs[i].sigmaEnCharge->Eval(detector[i]),2);
+                  double sigmaChi = (crystal[cry1N/8][cry1N%8]->sigma[i/4][i%4])->Eval(detector[i]);
+                  chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sigmaChi,2);
                 }
               }
 
@@ -2031,7 +2001,9 @@ int main (int argc, char** argv)
 
                   //chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sqrt(detector[i]),2);
                   // chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(0.12*detector[i]/2.355,2) ;
-                  chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(vecMPPCs[i].sigmaEnCharge->Eval(detector[i]),2);
+                  std::cout << (crystal[cry0N/8][cry0N%8]->sigma[i/4][i%4])->Eval(detector[i]) << std::endl;
+                  double sigmaChi = (crystal[cry1N/8][cry1N%8]->sigma[i/4][i%4])->Eval(detector[i]);
+                  chiSquare += pow(fabs(detector[i]-recoDetector[i]),2)/pow(sigmaChi,2);
                 }
               }
               z0_like_10.push_back(zValue[0]);
